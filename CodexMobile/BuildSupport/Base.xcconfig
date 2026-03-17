@@ -3,5 +3,10 @@
 
 PHODEX_CHATGPT_CALLBACK_SCHEME = phodex
 PHODEX_DEFAULT_RELAY_URL =
+REMODEX_DEVELOPMENT_TEAM = HR24WHR326
+REMODEX_APP_BUNDLE_IDENTIFIER = com.emanueledipietro.Remodex
+REMODEX_TEST_BUNDLE_IDENTIFIER = com.emanueledipietro.CodexMobileTests
+REMODEX_UI_TEST_BUNDLE_IDENTIFIER = com.emanueledipietro.CodexMobileUITests
+REMODEX_CODE_SIGN_ENTITLEMENTS = CodexMobile/CodexMobile.entitlements
 
 #include? "PrivateOverrides.xcconfig"
