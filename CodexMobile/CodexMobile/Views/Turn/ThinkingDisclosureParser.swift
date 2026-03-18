@@ -20,6 +20,29 @@ struct ThinkingDisclosureContent: Equatable {
 }
 
 enum ThinkingDisclosureParser {
+    private static let compactActivityPrefixes = [
+        "running ",
+        "completed ",
+        "failed ",
+        "stopped ",
+        "read ",
+        "search ",
+        "searched ",
+        "exploring ",
+        "list ",
+        "listing ",
+        "open ",
+        "opened ",
+        "find ",
+        "finding ",
+        "edit ",
+        "edited ",
+        "write ",
+        "wrote ",
+        "apply ",
+        "applied ",
+    ]
+
     // Extracts compact summary anchors from standalone bold reasoning lines.
     static func parse(from rawText: String) -> ThinkingDisclosureContent {
         let normalizedText = normalizedThinkingContent(from: rawText)
@@ -106,6 +129,36 @@ enum ThinkingDisclosureParser {
         }
 
         return trimmed
+    }
+
+    // Collapses activity-only tool traces down to the latest status line for compact timeline rendering.
+    static func compactActivityPreview(fromNormalizedText normalizedText: String) -> String? {
+        let lines = normalizedText
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        guard !lines.isEmpty else {
+            return nil
+        }
+
+        let activityLines = lines.filter { line in
+            let normalizedLine = line.lowercased()
+            return compactActivityPrefixes.contains(where: { normalizedLine.hasPrefix($0) })
+        }
+
+        let isActivityOnly = activityLines.count == lines.count
+
+        guard isActivityOnly else {
+            // Some streamed command previews wrap onto follow-up lines that no longer carry the
+            // original prefix. In that case keep the first meaningful activity line.
+            if activityLines.count == 1, let firstActivityLine = activityLines.first {
+                return firstActivityLine
+            }
+            return nil
+        }
+
+        return activityLines.last
     }
 
     private static func summaryTitle(from line: String) -> String? {

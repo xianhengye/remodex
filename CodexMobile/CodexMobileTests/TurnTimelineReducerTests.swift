@@ -230,6 +230,48 @@ final class TurnTimelineReducerTests: XCTestCase {
         XCTAssertEqual(projection.messages.map(\.id), ["visible-diff"])
     }
 
+    func testProjectPlacesSubagentActionBeforeAssistantReplyWithinTurn() {
+        let now = Date()
+        let messages = [
+            makeMessage(
+                id: "assistant",
+                threadID: "thread",
+                role: .assistant,
+                kind: .chat,
+                text: "Here is the combined result.",
+                createdAt: now.addingTimeInterval(2),
+                turnID: "turn-1",
+                itemID: "assistant-1",
+                orderIndex: 3
+            ),
+            makeMessage(
+                id: "subagents",
+                threadID: "thread",
+                role: .system,
+                kind: .subagentAction,
+                text: "Spawning 2 agents",
+                createdAt: now.addingTimeInterval(1),
+                turnID: "turn-1",
+                itemID: "subagents-1",
+                orderIndex: 2
+            ),
+            makeMessage(
+                id: "user",
+                threadID: "thread",
+                role: .user,
+                kind: .chat,
+                text: "Investigate the repo",
+                createdAt: now,
+                turnID: "turn-1",
+                orderIndex: 1
+            ),
+        ]
+
+        let projection = TurnTimelineReducer.project(messages: messages)
+
+        XCTAssertEqual(projection.messages.map(\.id), ["user", "subagents", "assistant"])
+    }
+
     func testRemoveDuplicateFileChangeMessagesKeepsNewestMatchingTurnSnapshot() {
         let now = Date()
         let messages = [
@@ -314,6 +356,125 @@ final class TurnTimelineReducerTests: XCTestCase {
 
         let deduped = TurnTimelineReducer.removeDuplicateFileChangeMessages(in: messages)
         XCTAssertEqual(deduped.map(\.id), ["diff-2"])
+    }
+
+    func testRemoveDuplicateFileChangeMessagesKeepsNewestSnapshotForSamePaths() {
+        let now = Date()
+        let messages = [
+            makeMessage(
+                id: "diff-1",
+                threadID: "thread",
+                role: .system,
+                kind: .fileChange,
+                text: """
+                Edited Sources/App.swift +2 -1
+                Edited Sources/Composer.swift +3 -1
+                """,
+                createdAt: now,
+                turnID: "turn-1",
+                itemID: "filechange-1",
+                isStreaming: true
+            ),
+            makeMessage(
+                id: "diff-2",
+                threadID: "thread",
+                role: .system,
+                kind: .fileChange,
+                text: """
+                Edited Sources/App.swift +4 -2
+                Edited Sources/Composer.swift +6 -2
+                """,
+                createdAt: now.addingTimeInterval(1),
+                turnID: "turn-1",
+                itemID: "turn-diff-1",
+                isStreaming: false
+            ),
+        ]
+
+        let deduped = TurnTimelineReducer.removeDuplicateFileChangeMessages(in: messages)
+        XCTAssertEqual(deduped.map(\.id), ["diff-2"])
+    }
+
+    func testRemoveDuplicateFileChangeMessagesKeepsDistinctCompletedSnapshotsForSamePaths() {
+        let now = Date()
+        let messages = [
+            makeMessage(
+                id: "diff-1",
+                threadID: "thread",
+                role: .system,
+                kind: .fileChange,
+                text: """
+                Edited Sources/App.swift +2 -1
+                Edited Sources/Composer.swift +3 -1
+                """,
+                createdAt: now,
+                turnID: "turn-1",
+                itemID: "turn-diff-1",
+                isStreaming: false
+            ),
+            makeMessage(
+                id: "diff-2",
+                threadID: "thread",
+                role: .system,
+                kind: .fileChange,
+                text: """
+                Edited Sources/App.swift +4 -2
+                Edited Sources/Composer.swift +6 -2
+                """,
+                createdAt: now.addingTimeInterval(1),
+                turnID: "turn-1",
+                itemID: "turn-diff-2",
+                isStreaming: false
+            ),
+        ]
+
+        let deduped = TurnTimelineReducer.removeDuplicateFileChangeMessages(in: messages)
+        XCTAssertEqual(deduped.map(\.id), ["diff-1", "diff-2"])
+    }
+
+    func testRemoveDuplicateFileChangeMessagesKeepsOlderSubsetWhenLaterSnapshotAddsFiles() {
+        let now = Date()
+        let messages = [
+            makeMessage(
+                id: "diff-1",
+                threadID: "thread",
+                role: .system,
+                kind: .fileChange,
+                text: "Edited Sources/App.swift +2 -1",
+                createdAt: now,
+                turnID: "turn-1",
+                itemID: "filechange-1",
+                isStreaming: true
+            ),
+            makeMessage(
+                id: "diff-2",
+                threadID: "thread",
+                role: .system,
+                kind: .fileChange,
+                text: """
+                Edited Sources/App.swift +4 -2
+                Edited Sources/Composer.swift +6 -2
+                """,
+                createdAt: now.addingTimeInterval(1),
+                turnID: "turn-1",
+                itemID: "turn-diff-1",
+                isStreaming: false
+            ),
+            makeMessage(
+                id: "diff-3",
+                threadID: "thread",
+                role: .system,
+                kind: .fileChange,
+                text: "Edited Sources/Other.swift +1 -0",
+                createdAt: now.addingTimeInterval(2),
+                turnID: "turn-1",
+                itemID: "turn-diff-2",
+                isStreaming: false
+            ),
+        ]
+
+        let deduped = TurnTimelineReducer.removeDuplicateFileChangeMessages(in: messages)
+        XCTAssertEqual(deduped.map(\.id), ["diff-1", "diff-2", "diff-3"])
     }
 
     func testRemoveDuplicateFileChangeMessagesKeepsDistinctTurnSnapshots() {

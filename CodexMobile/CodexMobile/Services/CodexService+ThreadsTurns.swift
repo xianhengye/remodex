@@ -213,7 +213,18 @@ extension CodexService {
         }
         if normalizedTurnID == nil,
            let normalizedThreadID {
-            normalizedTurnID = try await resolveInFlightTurnID(threadId: normalizedThreadID)
+            do {
+                normalizedTurnID = try await resolveInFlightTurnID(threadId: normalizedThreadID)
+            } catch {
+                if let serviceError = error as? CodexServiceError,
+                   case .invalidInput(_) = serviceError,
+                   protectedRunningFallbackThreadIDs.contains(normalizedThreadID),
+                   activeTurnID(for: normalizedThreadID) == nil {
+                    demoteVisibleRunningStateToProtectedFallback(for: normalizedThreadID)
+                }
+                lastErrorMessage = userFacingTurnErrorMessage(from: error)
+                throw error
+            }
         }
 
         guard let normalizedTurnID else {
@@ -624,6 +635,7 @@ extension CodexService {
 
             if let threadObject = threadValue.objectValue {
                 let historyMessages = decodeMessagesFromThreadRead(threadId: threadId, threadObject: threadObject)
+                registerSubagentThreads(from: historyMessages, parentThreadId: threadId)
                 if !historyMessages.isEmpty {
                     let existingMessages = messagesByThread[threadId] ?? []
                     let activeThreadIDs = Set(activeTurnIdByThread.keys)
@@ -1281,10 +1293,28 @@ extension CodexService {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    // Resolves the currently running turn id from thread/read when local state becomes stale.
+    // Resolves the currently interruptible turn id from thread/read when local state becomes stale.
+    // If the runtime reports "running" without an id yet, surface that instead of falling
+    // back to the latest completed turn and interrupting the wrong run.
     func resolveInFlightTurnID(threadId: String) async throws -> String? {
-        let snapshot = try await readThreadTurnStateSnapshot(threadId: threadId)
-        return snapshot.interruptibleTurnID ?? snapshot.latestTurnID
+        let maxAttempts = 3
+        for attempt in 0..<maxAttempts {
+            let snapshot = try await readThreadTurnStateSnapshot(threadId: threadId)
+            if let interruptibleTurnID = snapshot.interruptibleTurnID {
+                return interruptibleTurnID
+            }
+            if snapshot.hasInterruptibleTurnWithoutID {
+                if attempt < (maxAttempts - 1) {
+                    try? await Task.sleep(nanoseconds: 200_000_000)
+                    continue
+                }
+                throw CodexServiceError.invalidInput(
+                    "The active run has not published an interruptible turn ID yet. Please try again in a moment."
+                )
+            }
+            return nil
+        }
+        return nil
     }
 
     // Parses turn status values from thread/read turn objects.
@@ -1351,38 +1381,84 @@ extension CodexService {
         hasInterruptibleTurnWithoutID: Bool,
         latestTurnID: String?
     ) {
-        let params: JSONValue = .object([
-            "threadId": .string(threadId),
-            "includeTurns": .bool(true),
-        ])
+        let response: RPCMessage
+        do {
+            response = try await sendRequest(
+                method: "thread/read",
+                params: .object([
+                    "threadId": .string(threadId),
+                    "includeTurns": .bool(true),
+                ])
+            )
+        } catch {
+            guard shouldRetryThreadReadTurnSnapshotWithSnakeCase(error) else {
+                throw error
+            }
 
-        let response = try await sendRequest(method: "thread/read", params: params)
+            response = try await sendRequest(
+                method: "thread/read",
+                params: .object([
+                    "thread_id": .string(threadId),
+                    "include_turns": .bool(true),
+                ])
+            )
+        }
+
         guard let threadObject = response.result?.objectValue?["thread"]?.objectValue else {
             return (nil, false, nil)
         }
 
         let turnObjects = threadObject["turns"]?.arrayValue?.compactMap { $0.objectValue } ?? []
-        guard let latestTurnObject = turnObjects.last else {
+        guard !turnObjects.isEmpty else {
             return (nil, false, nil)
         }
 
-        let latestTurnID = normalizedInterruptIdentifier(
-            latestTurnObject["id"]?.stringValue
-                ?? latestTurnObject["turnId"]?.stringValue
-                ?? latestTurnObject["turn_id"]?.stringValue
-        )
-        let latestStatus = normalizedInterruptTurnStatus(from: latestTurnObject)
+        let latestTurnID = turnObjects.reversed().compactMap { turnObject in
+            normalizedInterruptIdentifier(
+                turnObject["id"]?.stringValue
+                    ?? turnObject["turnId"]?.stringValue
+                    ?? turnObject["turn_id"]?.stringValue
+            )
+        }.first
 
-        // Missing status should stay permissive so incomplete payloads do not clear live UI state.
-        guard isInterruptibleTurnStatus(latestStatus) else {
-            return (nil, false, latestTurnID)
+        // Some thread/read payloads can include a newer completed turn after the currently
+        // running one, so scan backwards for the most recent interruptible turn instead of
+        // assuming the array tail is always the active run.
+        var hasInterruptibleTurnWithoutID = false
+        for turnObject in turnObjects.reversed() {
+            let turnStatus = normalizedInterruptTurnStatus(from: turnObject)
+            guard isInterruptibleTurnStatus(turnStatus) else {
+                continue
+            }
+
+            if let interruptibleTurnID = normalizedInterruptIdentifier(
+                turnObject["id"]?.stringValue
+                    ?? turnObject["turnId"]?.stringValue
+                    ?? turnObject["turn_id"]?.stringValue
+            ) {
+                return (interruptibleTurnID, false, latestTurnID)
+            }
+
+            hasInterruptibleTurnWithoutID = true
         }
 
-        if let latestTurnID {
-            return (latestTurnID, false, latestTurnID)
+        return (nil, hasInterruptibleTurnWithoutID, latestTurnID)
+    }
+
+    // Keeps stop recovery compatible with runtimes that only accept snake_case thread/read params.
+    func shouldRetryThreadReadTurnSnapshotWithSnakeCase(_ error: Error) -> Bool {
+        guard let serviceError = error as? CodexServiceError,
+              case .rpcError(let rpcError) = serviceError else {
+            return false
         }
 
-        return (nil, true, latestTurnID)
+        guard rpcError.code == -32600 || rpcError.code == -32602 else {
+            return false
+        }
+
+        let message = rpcError.message.lowercased()
+        let hints = ["threadid", "includeturns", "thread_id", "include_turns", "unknown field", "missing field", "invalid"]
+        return hints.contains { message.contains($0) }
     }
 
     // Retries after refreshing turn id when local activeTurn cache is stale.
