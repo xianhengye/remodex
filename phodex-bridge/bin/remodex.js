@@ -7,6 +7,7 @@
 
 const {
   startBridge,
+  startWebApp,
   resetBridgePairing,
   openLastActiveThread,
   watchThreadRollout,
@@ -16,6 +17,11 @@ const command = process.argv[2] || "up";
 
 if (command === "up") {
   startBridge();
+  return;
+}
+
+if (command === "web") {
+  startWebApp(process.argv.slice(3));
   return;
 }
 
@@ -55,6 +61,6 @@ if (command === "watch") {
 
 if (command !== "up") {
   console.error(`Unknown command: ${command}`);
-  console.error("Usage: remodex up | remodex reset-pairing | remodex resume | remodex watch [threadId]");
+  console.error("Usage: remodex up | remodex web [--host HOST] [--port PORT] [--token TOKEN|--no-token] | remodex reset-pairing | remodex resume | remodex watch [threadId]");
   process.exit(1);
 }

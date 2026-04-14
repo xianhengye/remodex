@@ -116,6 +116,28 @@ remodex up
 
 Open the Remodex app, follow the onboarding flow, then scan the QR code from inside the app and start coding.
 
+## Web App Preview
+
+You can run Remodex as a browser app without installing or signing the iOS target:
+
+```sh
+cd phodex-bridge
+npm install
+npm run web -- --host 0.0.0.0 --port 9173
+```
+
+The command prints a private URL containing a token. Open that URL from Safari on your iPhone. For regular phone use, prefer a Tailscale address or another private network path to your Mac.
+
+`remodex web`:
+
+- Spawns `codex app-server` or uses `REMODEX_CODEX_ENDPOINT`
+- Serves a local PWA over HTTP
+- Exposes a WebSocket at `/ws`
+- Forwards Codex JSON-RPC messages between the browser and the bridge
+- Handles bridge-local git, workspace, desktop handoff, and thread-context RPCs
+
+The Web App path does not use Apple signing, Push Notifications, Sign in with Apple, Live Activities, or the native iOS Keychain. Treat the printed token like a password because anyone who can reach the URL can control the local Codex bridge.
+
 ## Run Locally
 
 ```sh
@@ -183,6 +205,21 @@ Starts the bridge:
 - Forwards JSON-RPC messages bidirectionally
 - Handles git commands from the phone
 - Persists the active thread for later resumption
+
+### `remodex web`
+
+Starts the browser/PWA client:
+
+```sh
+remodex web --host 0.0.0.0 --port 9173
+```
+
+Options:
+
+- `--host <host>` binds the Web App server. Defaults to `127.0.0.1`.
+- `--port <port>` sets the Web App port. Defaults to `9173`.
+- `--token <token>` uses a stable access token.
+- `--no-token` disables the WebSocket token check.
 
 ### `remodex reset-pairing`
 

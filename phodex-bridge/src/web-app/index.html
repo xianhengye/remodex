@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#101413">
+    <title>Remodex Web</title>
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar" aria-label="Threads">
+        <header class="side-header">
+          <div>
+            <p class="eyebrow">Remodex</p>
+            <h1>Codex</h1>
+          </div>
+          <span id="connection-pill" class="pill">Connecting</span>
+        </header>
+
+        <section class="controls" aria-label="Start">
+          <label>
+            Project path
+            <input id="cwd-input" type="text" autocomplete="off" placeholder="/Users/me/project">
+          </label>
+          <div class="control-row">
+            <label>
+              Model
+              <select id="model-select">
+                <option value="">Default</option>
+              </select>
+            </label>
+            <label>
+              Reasoning
+              <select id="effort-select">
+                <option value="">Default</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="xhigh">XHigh</option>
+              </select>
+            </label>
+          </div>
+          <button id="new-thread-button" type="button">New Thread</button>
+        </section>
+
+        <section class="thread-section" aria-label="Recent threads">
+          <div class="section-title">
+            <h2>Threads</h2>
+            <button id="refresh-button" class="ghost" type="button">Refresh</button>
+          </div>
+          <div id="thread-list" class="thread-list" role="list"></div>
+        </section>
+      </aside>
+
+      <section class="workspace" aria-label="Conversation">
+        <header class="chat-header">
+          <div>
+            <p id="thread-project" class="eyebrow">No project selected</p>
+            <h2 id="thread-title">New conversation</h2>
+          </div>
+          <button id="interrupt-button" class="ghost danger" type="button" disabled>Interrupt</button>
+        </header>
+
+        <section id="approval-panel" class="approval-panel hidden" aria-live="polite"></section>
+        <section id="messages" class="messages" aria-live="polite"></section>
+
+        <form id="composer" class="composer">
+          <textarea id="prompt-input" rows="3" placeholder="Ask Codex"></textarea>
+          <button id="send-button" type="submit">Send</button>
+        </form>
+      </section>
+    </main>
+
+    <div id="toast" class="toast hidden" role="status"></div>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
