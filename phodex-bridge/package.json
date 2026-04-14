@@ -12,6 +12,7 @@
   ],
   "scripts": {
     "start": "node ./bin/remodex.js up",
+    "web": "node ./bin/remodex.js web",
     "test": "node --test ./test/*.test.js",
     "prepack": "node ./scripts/prepare-private-defaults.js",
     "postpack": "node ./scripts/cleanup-private-defaults.js"
